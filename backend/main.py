@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, SessionLocal, Base
 from routes import autenticacion, citas, doctores
+from sqlalchemy import text
 import models
 
 Base.metadata.create_all(bind=engine)
@@ -24,6 +25,20 @@ app.include_router(doctores.router, prefix="/doctores", tags=["Doctores"])
 def seed_data():
     db = SessionLocal()
     try:
+        # Dynamic migration to add fecha_nacimiento if missing
+        columnas = db.execute(text("SHOW COLUMNS FROM usuarios LIKE 'fecha_nacimiento'")).fetchall()
+        if not columnas:
+            db.execute(text("ALTER TABLE usuarios ADD COLUMN fecha_nacimiento VARCHAR(50) NULL"))
+            db.commit()
+
+        # Dynamic migration to add activo if missing to doctores
+        columnas_doc = db.execute(text("SHOW COLUMNS FROM doctores LIKE 'activo'")).fetchall()
+        if not columnas_doc:
+            db.execute(text("ALTER TABLE doctores ADD COLUMN activo INTEGER DEFAULT 0"))
+            db.commit()
+            db.execute(text("UPDATE doctores SET activo = 1"))
+            db.commit()
+
         # Admin por defecto
         admin = db.query(models.Usuario).filter(models.Usuario.email == "admin@fastcitas.com").first()
         if not admin:
@@ -31,7 +46,8 @@ def seed_data():
                 nombre="Administrador",
                 email="admin@fastcitas.com",
                 password="admin123",
-                rol="admin"
+                rol="admin",
+                fecha_nacimiento="1990-01-01"
             ))
             db.commit()
 
@@ -66,7 +82,8 @@ def seed_data():
                     email=d["email"],
                     telefono=d["telefono"],
                     usuario_id=usuario_doc.id,
-                    foto_iniciales=iniciales
+                    foto_iniciales=iniciales,
+                    activo=1
                 ))
         db.commit()
     finally:

@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from database import get_db
 import models
+import secrets
+from datetime import datetime, timedelta
 
 router = APIRouter()
 
@@ -17,6 +19,7 @@ class RegistroData(BaseModel):
     rol: str = "paciente"
     especialidad: str = ""
     telefono: str = ""
+    fecha_nacimiento: str = ""
 
 class CambiarPasswordData(BaseModel):
     email: str
@@ -42,6 +45,7 @@ def login(data: LoginData, db: Session = Depends(get_db)):
         "nombre": usuario.nombre,
         "email": usuario.email,
         "rol": usuario.rol,
+        "fecha_nacimiento": usuario.fecha_nacimiento or "",
         **extra
     }}
 
@@ -58,7 +62,8 @@ def register(data: RegistroData, db: Session = Depends(get_db)):
         nombre=data.nombre,
         email=data.email,
         password=data.password,
-        rol=data.rol
+        rol=data.rol,
+        fecha_nacimiento=data.fecha_nacimiento
     )
     db.add(nuevo)
     db.flush()
@@ -71,7 +76,8 @@ def register(data: RegistroData, db: Session = Depends(get_db)):
             email=data.email,
             telefono=data.telefono,
             usuario_id=nuevo.id,
-            foto_iniciales=iniciales
+            foto_iniciales=iniciales,
+            activo=0
         ))
 
     db.commit()
@@ -85,6 +91,49 @@ def cambiar_password(data: CambiarPasswordData, db: Session = Depends(get_db)):
     usuario.password = data.nueva_password
     db.commit()
     return {"mensaje": "Contraseña actualizada correctamente"}
+
+# Solicitar restablecimiento de contraseña
+@router.post("/solicitar-reset")
+def solicitar_reset(email: str, db: Session = Depends(get_db)):
+    usuario = db.query(models.Usuario).filter(models.Usuario.email == email).first()
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Correo no encontrado")
+    # Generar token seguro
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.utcnow() + timedelta(hours=1)
+    reset = models.PasswordResetToken(usuario_id=usuario.id, token=token, expires_at=expires_at)
+    db.add(reset)
+    db.commit()
+    # Enviar correo (simulado aquí; integración con envío real de email)
+    # Aquí simplemente devolvemos el token para pruebas
+    return {"mensaje": "Solicitud enviada", "token": token}
+
+# Validar token
+@router.get("/validar-token")
+def validar_token(token: str, db: Session = Depends(get_db)):
+    reset = db.query(models.PasswordResetToken).filter(models.PasswordResetToken.token == token).first()
+    if not reset or reset.expires_at < datetime.utcnow() or reset.used:
+        raise HTTPException(status_code=400, detail="Token inválido o expirado")
+    return {"valido": True}
+
+# Restablecer contraseña usando token
+@router.put("/reset-password")
+def reset_password(token: str, nueva_password: str, db: Session = Depends(get_db)):
+    reset = db.query(models.PasswordResetToken).filter(models.PasswordResetToken.token == token).first()
+    if not reset or reset.expires_at < datetime.utcnow() or reset.used:
+        raise HTTPException(status_code=400, detail="Token inválido o expirado")
+    usuario = db.query(models.Usuario).filter(models.Usuario.id == reset.usuario_id).first()
+    usuario.password = nueva_password
+    reset.used = 1
+    db.commit()
+    return {"mensaje": "Contraseña restablecida correctamente"}
+
+@router.get("/verificar-email")
+def verificar_email(email: str, db: Session = Depends(get_db)):
+    existe = db.query(models.Usuario).filter(models.Usuario.email == email).first()
+    if not existe:
+        raise HTTPException(status_code=404, detail="No existe una cuenta con ese correo")
+    return {"existe": True}
 
 @router.get("/usuarios")
 def obtener_usuarios(db: Session = Depends(get_db)):

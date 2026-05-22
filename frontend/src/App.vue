@@ -10,14 +10,16 @@ import { RouterView } from 'vue-router'
 </script>
 
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  font-family: 'Inter', sans-serif;
 }
 
 body {
-  font-family: 'Segoe UI', sans-serif;
-  background: #f0f4f8;
+  background: #080c14;
 }
 </style>

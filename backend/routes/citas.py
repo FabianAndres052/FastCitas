@@ -39,50 +39,69 @@ def crear_cita(data: CitaData, db: Session = Depends(get_db)):
 @router.get("/paciente/{paciente_id}")
 def citas_paciente(paciente_id: int, db: Session = Depends(get_db)):
     try:
-        citas = db.query(models.Cita).filter(models.Cita.paciente_id == paciente_id).all()
+        query_res = db.query(models.Cita, models.Doctor).join(
+            models.Doctor, models.Cita.doctor_id == models.Doctor.id, isouter=True
+        ).filter(models.Cita.paciente_id == paciente_id).all()
         resultado = []
-        for c in citas:
-            doctor = db.query(models.Doctor).filter(models.Doctor.id == c.doctor_id).first()
+        for cita, doctor in query_res:
             resultado.append({
-                "id": c.id,
-                "especialidad": c.especialidad,
-                "fecha": c.fecha,
-                "hora": c.hora,
-                "estado": c.estado,
+                "id": cita.id,
+                "especialidad": cita.especialidad,
+                "fecha": cita.fecha,
+                "hora": cita.hora,
+                "estado": cita.estado,
                 "doctor_nombre": doctor.nombre if doctor else "Sin asignar",
                 "doctor_iniciales": doctor.foto_iniciales if doctor else "??",
             })
         return resultado
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error al obtener las citas del paciente")
+
+@router.get("/doctor/{doctor_id}")
+def citas_doctor(doctor_id: int, db: Session = Depends(get_db)):
+    try:
+        query_res = db.query(models.Cita, models.Usuario).join(
+            models.Usuario, models.Cita.paciente_id == models.Usuario.id, isouter=True
+        ).filter(models.Cita.doctor_id == doctor_id).all()
+        resultado = []
+        for cita, paciente in query_res:
+            resultado.append({
+                "id": cita.id,
+                "especialidad": cita.especialidad,
+                "fecha": cita.fecha,
+                "hora": cita.hora,
+                "estado": cita.estado,
+                "paciente_nombre": paciente.nombre if paciente else "Desconocido",
+                "paciente_email": paciente.email if paciente else "N/A",
+            })
+        return resultado
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Error al obtener las citas del doctor")
 
 @router.get("/")
 def todas_las_citas(db: Session = Depends(get_db)):
     try:
-        citas = db.query(models.Cita).all()
+        query_res = db.query(models.Cita, models.Doctor, models.Usuario).join(
+            models.Doctor, models.Cita.doctor_id == models.Doctor.id, isouter=True
+        ).join(
+            models.Usuario, models.Cita.paciente_id == models.Usuario.id, isouter=True
+        ).all()
         resultado = []
-        for c in citas:
-            doctor = None
-            paciente = None
-            try:
-                doctor = db.query(models.Doctor).filter(models.Doctor.id == c.doctor_id).first()
-                paciente = db.query(models.Usuario).filter(models.Usuario.id == c.paciente_id).first()
-            except:
-                pass
+        for cita, doctor, paciente in query_res:
             resultado.append({
-                "id": c.id,
-                "paciente_id": c.paciente_id,
+                "id": cita.id,
+                "paciente_id": cita.paciente_id,
                 "paciente_nombre": paciente.nombre if paciente else "Desconocido",
-                "doctor_id": c.doctor_id,
+                "doctor_id": cita.doctor_id,
                 "doctor_nombre": doctor.nombre if doctor else "Sin asignar",
-                "especialidad": c.especialidad,
-                "fecha": c.fecha,
-                "hora": c.hora,
-                "estado": c.estado,
+                "especialidad": cita.especialidad,
+                "fecha": cita.fecha,
+                "hora": cita.hora,
+                "estado": cita.estado,
             })
         return resultado
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error al obtener la lista de todas las citas")
 
 @router.put("/{cita_id}/estado")
 def actualizar_estado(cita_id: int, estado: str, db: Session = Depends(get_db)):

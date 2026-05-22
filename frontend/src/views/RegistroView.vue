@@ -32,7 +32,53 @@
         </div>
       </div>
 
-      <div class="tarjeta">
+      <!-- TARJETA DE SKELETON (Se muestra por 2 segundos al registrar) -->
+      <div class="tarjeta" v-if="mostrarSkeleton">
+        <p class="tarjeta-titulo" style="display: flex; align-items: center; gap: 0.5rem;">
+          <i class="pi pi-spin pi-spinner" style="color: #388bfd"></i> Procesando registro...
+        </p>
+        <div class="rol-selector" style="margin-bottom: 1.5rem;">
+          <Skeleton height="3.5rem" style="border-radius: 12px" />
+          <Skeleton height="3.5rem" style="border-radius: 12px" />
+        </div>
+        <div class="fila-campos" style="margin-bottom: 1rem;">
+          <div class="campo">
+            <Skeleton height="1rem" width="60%" style="margin-bottom: 0.5rem;" />
+            <Skeleton height="2.5rem" style="border-radius: 8px" />
+          </div>
+          <div class="campo">
+            <Skeleton height="1rem" width="60%" style="margin-bottom: 0.5rem;" />
+            <Skeleton height="2.5rem" style="border-radius: 8px" />
+          </div>
+        </div>
+        <div class="fila-campos" style="margin-bottom: 1rem;">
+          <div class="campo">
+            <Skeleton height="1rem" width="50%" style="margin-bottom: 0.5rem;" />
+            <Skeleton height="2.5rem" style="border-radius: 8px" />
+          </div>
+          <div class="campo">
+            <Skeleton height="1rem" width="50%" style="margin-bottom: 0.5rem;" />
+            <Skeleton height="2.5rem" style="border-radius: 8px" />
+          </div>
+        </div>
+        <div class="fila-campos" style="margin-bottom: 1rem;">
+          <div class="campo">
+            <Skeleton height="1rem" width="40%" style="margin-bottom: 0.5rem;" />
+            <Skeleton height="2.5rem" style="border-radius: 8px" />
+          </div>
+          <div class="campo" v-if="rol === 'paciente'"></div>
+        </div>
+        <div class="campo campo-full" v-if="rol === 'doctor'" style="margin-bottom: 1rem;">
+          <Skeleton height="1rem" width="30%" style="margin-bottom: 0.5rem;" />
+          <Skeleton height="2.5rem" style="border-radius: 8px" />
+        </div>
+        <div style="margin-top: 1.5rem">
+          <Skeleton height="2.7rem" style="border-radius: 10px" />
+        </div>
+      </div>
+
+      <!-- FORMULARIO REAL -->
+      <div class="tarjeta" v-else>
         <p class="tarjeta-titulo">Registro</p>
 
         <!-- SELECTOR DE ROL VISUAL -->
@@ -76,8 +122,18 @@
             <InputText v-model="contrasena" type="password" placeholder="••••••••" class="inp" :disabled="cargando" />
           </div>
           <div class="campo">
+            <label>Fecha de nacimiento</label>
+            <input type="date" v-model="fechaNacimiento" class="inp-fecha" :disabled="cargando" />
+          </div>
+        </div>
+
+        <div class="fila-campos">
+          <div class="campo">
             <label>Teléfono</label>
             <InputText v-model="telefono" placeholder="3001234567" class="inp" :disabled="cargando" />
+          </div>
+          <div class="campo" v-if="rol === 'paciente'">
+            <!-- Espacio para simetría -->
           </div>
         </div>
 
@@ -162,9 +218,11 @@ const nombre = ref('')
 const correo = ref('')
 const contrasena = ref('')
 const telefono = ref('')
+const fechaNacimiento = ref('')
 const rol = ref('paciente')
 const especialidad = ref('')
 const cargando = ref(false)
+const mostrarSkeleton = ref(false)
 const aceptaTerminos = ref(false)
 const expandirTerminos = ref(false)
 const intentoRegistro = ref(false)
@@ -198,8 +256,22 @@ const registrar = async () => {
   intentoRegistro.value = true
   if (!aceptaTerminos.value) return
 
-  if (!nombre.value || !correo.value || !contrasena.value || !telefono.value) {
+  if (!nombre.value || !correo.value || !contrasena.value || !telefono.value || !fechaNacimiento.value) {
     notificacion.add({ severity: 'warn', summary: 'Atención', detail: 'Completa todos los campos', life: 3000 })
+    return
+  }
+
+  // Validar edad mínima (1 año)
+  const hoy = new Date()
+  const fechaNac = new Date(fechaNacimiento.value)
+  let edad = hoy.getFullYear() - fechaNac.getFullYear()
+  const m = hoy.getMonth() - fechaNac.getMonth()
+  if (m < 0 || (m === 0 && hoy.getDate() < fechaNac.getDate())) {
+    edad--
+  }
+
+  if (edad < 1) {
+    notificacion.add({ severity: 'error', summary: 'Edad no permitida', detail: 'La edad mínima permitida es de 1 año', life: 3000 })
     return
   }
 
@@ -208,28 +280,35 @@ const registrar = async () => {
     return
   }
 
+  mostrarSkeleton.value = true
   cargando.value = true
+
+  const registrarPromesa = axios.post('/auth/register', {
+    nombre: nombre.value,
+    email: correo.value,
+    password: contrasena.value,
+    telefono: telefono.value,
+    rol: rol.value,
+    especialidad: rol.value === 'doctor' ? especialidad.value : '',
+    fecha_nacimiento: fechaNacimiento.value,
+  })
+
+  const delayPromesa = new Promise(resolve => setTimeout(resolve, 2000))
+
   try {
-    await axios.post('/auth/register', {
-      nombre: nombre.value,
-      email: correo.value,
-      password: contrasena.value,
-      telefono: telefono.value,
-      rol: rol.value,
-      especialidad: rol.value === 'doctor' ? especialidad.value : '',
-    })
+    const [respuesta] = await Promise.all([registrarPromesa, delayPromesa])
     notificacion.add({
       severity: 'success',
       summary: '¡Cuenta creada!',
       detail: rol.value === 'doctor'
-        ? `Dr. ${nombre.value} ya aparece en el listado de médicos`
+        ? `Dr. ${nombre.value} ha sido registrado. Pendiente de aprobación.`
         : 'Ya puedes iniciar sesión',
       life: 3000
     })
     setTimeout(() => enrutador.push('/login'), 2000)
   } catch (error) {
     notificacion.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.detail || 'Error al registrar', life: 3000 })
-  } finally {
+    mostrarSkeleton.value = false
     cargando.value = false
   }
 }
@@ -318,6 +397,16 @@ const registrar = async () => {
 .selector:hover { border-color: #388bfd; }
 .selector:focus { outline: none; border-color: #388bfd; }
 .selector option { background: #161b22; }
+
+.inp-fecha {
+  width: 100%; padding: 0.55rem 0.8rem;
+  background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+  color: #e6edf3; font-size: 0.85rem; font-family: 'Inter', sans-serif;
+  cursor: pointer; transition: border-color 0.2s;
+}
+.inp-fecha:hover { border-color: #388bfd; }
+.inp-fecha:focus { outline: none; border-color: #388bfd; }
+.inp-fecha::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
 
 .bloque-terminos { background: #0a0f1a; border: 1px solid #21262d; border-radius: 12px; padding: 1rem; margin-bottom: 1.2rem; }
 .terminos-cabeza { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; padding-bottom: 0.5rem; }

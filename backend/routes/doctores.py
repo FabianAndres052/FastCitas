@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
 import models
@@ -7,7 +7,7 @@ router = APIRouter()
 
 @router.get("/")
 def obtener_doctores(db: Session = Depends(get_db)):
-    doctores = db.query(models.Doctor).all()
+    doctores = db.query(models.Doctor).filter(models.Doctor.activo == 1).all()
     return [{
         "id": d.id,
         "nombre": d.nombre,
@@ -16,6 +16,28 @@ def obtener_doctores(db: Session = Depends(get_db)):
         "telefono": d.telefono,
         "foto_iniciales": d.foto_iniciales,
     } for d in doctores]
+
+@router.get("/todos")
+def obtener_todos_doctores(db: Session = Depends(get_db)):
+    doctores = db.query(models.Doctor).all()
+    return [{
+        "id": d.id,
+        "nombre": d.nombre,
+        "especialidad": d.especialidad,
+        "email": d.email,
+        "telefono": d.telefono,
+        "foto_iniciales": d.foto_iniciales,
+        "activo": d.activo,
+    } for d in doctores]
+
+@router.put("/{doctor_id}/toggle-activo")
+def toggle_activo_doctor(doctor_id: int, db: Session = Depends(get_db)):
+    doctor = db.query(models.Doctor).filter(models.Doctor.id == doctor_id).first()
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor no encontrado")
+    doctor.activo = 1 if doctor.activo == 0 else 0
+    db.commit()
+    return {"mensaje": f"Estado del doctor actualizado a {doctor.activo}"}
 
 @router.get("/{doctor_id}/horarios")
 def horarios_disponibles(doctor_id: int, fecha: str, db: Session = Depends(get_db)):

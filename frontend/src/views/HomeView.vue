@@ -23,8 +23,8 @@
           <div class="avatar">{{ usuario.nombre?.charAt(0).toUpperCase() }}</div>
           <span class="nav-saludo">{{ usuario.nombre }}</span>
         </div>
-        <button class="boton-salir" @click="cerrarSesion">
-          <i class="pi pi-sign-out"></i> Salir
+        <button class="btn-hamburguesa" @click="mostrarSidebar = true">
+          <i class="pi pi-bars"></i>
         </button>
       </div>
     </nav>
@@ -43,7 +43,7 @@
       <div class="hero-izq">
         <div class="hero-saludo-fila">
           <span class="hero-saludo-texto">{{ saludo }},</span>
-          <span class="hero-nombre-texto">{{ usuario.nombre?.split(' ')[0] }}</span>
+          <span class="hero-nombre-texto">{{ nombreAMostrar }}</span>
           <span class="hero-punto">.</span>
         </div>
         <p class="hero-sub">{{ fraseDelDia }}</p>
@@ -59,11 +59,15 @@
           <p class="reloj-fecha">{{ fechaActual }}</p>
         </div>
         <div class="hero-stat-mini">
-          <div class="mini-stat">
+          <div class="mini-stat" v-if="usuario.rol === 'doctor'">
+            <i class="pi pi-calendar"></i>
+            <span>{{ citasDoctor.length }} consultas</span>
+          </div>
+          <div class="mini-stat" v-else>
             <i class="pi pi-users"></i>
             <span>{{ doctores.length }} médicos</span>
           </div>
-          <div class="mini-stat">
+          <div class="mini-stat" v-if="usuario.rol !== 'doctor'">
             <i class="pi pi-calendar-check"></i>
             <span>{{ citas.length }} citas tuyas</span>
           </div>
@@ -73,166 +77,450 @@
 
     <div class="contenido">
 
-      <!-- STATS RÁPIDAS -->
-      <div class="grid-stats">
-        <div class="stat-card" v-for="s in statsUsuario" :key="s.label">
-          <div class="stat-icono" :style="{ background: s.bg, borderColor: s.borde }">
-            <i :class="['pi', s.icono]" :style="{ color: s.color }"></i>
-          </div>
-          <div>
-            <p class="stat-num">{{ s.valor }}</p>
-            <p class="stat-label">{{ s.label }}</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- DOCTORES DISPONIBLES -->
-      <div class="seccion-card">
-        <div class="card-cabeza">
-          <i class="pi pi-users cabeza-icono"></i>
-          <div>
-            <h2 class="card-titulo">Nuestros médicos</h2>
-            <p class="card-sub">Selecciona un doctor para agendar tu cita</p>
-          </div>
-        </div>
-
-        <div v-if="cargandoDoctores" class="doctores-grid">
-          <div class="skeleton-doctor" v-for="n in 4" :key="n">
-            <Skeleton height="120px" borderRadius="12px" />
-          </div>
-        </div>
-
-        <div v-else class="doctores-grid">
+      <!-- VISTA DEL DOCTOR -->
+      <div v-if="usuario.rol === 'doctor'" class="doctor-dashboard-cuerpo" style="display: flex; flex-direction: column; gap: 1.5rem; width: 100%;">
+        
+        <!-- STATS DOCTOR -->
+        <div class="grid-stats">
           <div
-            v-for="doc in doctores"
-            :key="doc.id"
-            class="doctor-card"
-            :class="{ seleccionado: doctorSeleccionado?.id === doc.id }"
-            @click="seleccionarDoctor(doc)"
+            class="stat-card"
+            v-for="s in statsDoctor"
+            :key="s.label"
+            :class="{ 'stat-activa': filtroEstado === s.filtro }"
+            @click="filtroEstado = s.filtro"
           >
-            <div class="doctor-avatar" :style="{ background: colorAvatar(doc.especialidad) }">
-              {{ doc.foto_iniciales }}
+            <div class="stat-icono" :style="{ background: s.bg, borderColor: s.borde }">
+              <i :class="['pi', s.icono]" :style="{ color: s.color }"></i>
             </div>
-            <div class="doctor-info">
-              <p class="doctor-nombre">{{ doc.nombre }}</p>
-              <p class="doctor-especialidad">{{ doc.especialidad }}</p>
-              <p class="doctor-contacto"><i class="pi pi-phone"></i> {{ doc.telefono }}</p>
-            </div>
-            <div class="doctor-check" v-if="doctorSeleccionado?.id === doc.id">
-              <i class="pi pi-check-circle"></i>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- AGENDAR CITA -->
-      <Transition name="deslizar">
-        <div class="seccion-card" v-if="doctorSeleccionado">
-          <div class="card-cabeza">
-            <i class="pi pi-calendar-plus cabeza-icono"></i>
             <div>
-              <h2 class="card-titulo">Agendar con {{ doctorSeleccionado.nombre }}</h2>
-              <p class="card-sub">{{ doctorSeleccionado.especialidad }}</p>
+              <p class="stat-num">{{ s.valor }}</p>
+              <p class="stat-label">{{ s.label }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- LISTADO DE SOLICITUDES PARA EL DOCTOR -->
+        <div class="seccion-card">
+          <div class="card-cabeza">
+            <i class="pi pi-calendar cabeza-icono"></i>
+            <div>
+              <h2 class="card-titulo">Citas solicitadas por tus pacientes</h2>
+              <p class="card-sub">Confirma o rechaza las citas que los pacientes agendaron contigo.</p>
             </div>
           </div>
 
-          <div class="form-grid">
-            <div class="campo">
-              <label>Fecha</label>
-              <input
-                type="date"
-                v-model="nuevaCita.fecha"
-                class="inp-fecha"
-                :disabled="cargando"
-                :min="hoy"
-                @change="cargarHorarios"
-              />
-            </div>
-
-            <div class="campo">
-              <label>Hora disponible</label>
-              <div v-if="!nuevaCita.fecha" class="hint-fecha">
-                <i class="pi pi-info-circle"></i> Selecciona primero una fecha
+          <!-- BANNER FILTRO ACTIVO -->
+          <Transition name="deslizar">
+            <div class="banner-filtro" v-if="filtroEstado !== ''">
+              <div class="filtro-info">
+                <i class="pi pi-filter"></i>
+                <span>Mostrando citas en estado: <strong class="filtro-valor">{{ filtroEstado }}</strong></span>
               </div>
-              <div v-else-if="cargandoHorarios" class="hint-fecha">
-                <i class="pi pi-spin pi-spinner"></i> Cargando horarios...
-              </div>
-              <div v-else class="horarios-grid">
-                <button
-                  v-for="h in horariosDisponibles"
-                  :key="h"
-                  class="btn-hora disponible"
-                  :class="{ activo: nuevaCita.hora === h }"
-                  @click="nuevaCita.hora = h"
-                >{{ h }}</button>
-                <button
-                  v-for="h in horariosOcupados"
-                  :key="h"
-                  class="btn-hora ocupado"
-                  disabled
-                >{{ h }}</button>
-              </div>
-            </div>
-          </div>
-
-          <button class="boton-agendar" @click="agendarCita" :disabled="cargando || !nuevaCita.fecha || !nuevaCita.hora">
-            <span v-if="!cargando" class="boton-contenido">
-              Confirmar cita <i class="pi pi-check icono-boton"></i>
-            </span>
-            <span v-else class="boton-contenido">
-              <i class="pi pi-spin pi-spinner"></i> Agendando...
-            </span>
-            <span class="boton-brillo"></span>
-          </button>
-        </div>
-      </Transition>
-
-      <!-- MIS CITAS -->
-      <div class="seccion-card">
-        <div class="card-cabeza">
-          <i class="pi pi-list cabeza-icono"></i>
-          <div>
-            <h2 class="card-titulo">Mis citas</h2>
-            <p class="card-sub">Historial y estado de tus citas médicas</p>
-          </div>
-        </div>
-
-        <div v-if="cargandoCitas" class="lista-skeleton">
-          <Skeleton height="3.5rem" borderRadius="10px" v-for="n in 3" :key="n" />
-        </div>
-
-        <div v-else-if="citas.length === 0" class="sin-citas">
-          <div class="sin-citas-icono"><i class="pi pi-calendar"></i></div>
-          <p class="sin-citas-titulo">Sin citas agendadas</p>
-          <p class="sin-citas-sub">Selecciona un médico arriba para agendar tu primera cita</p>
-        </div>
-
-        <div v-else class="citas-lista">
-          <TransitionGroup name="lista">
-            <div class="cita-fila" v-for="c in citas" :key="c.id">
-              <div class="cita-avatar" :style="{ background: colorAvatar(c.especialidad) }">
-                {{ c.doctor_iniciales }}
-              </div>
-              <div class="cita-info">
-                <p class="cita-doctor">{{ c.doctor_nombre }}</p>
-                <p class="cita-detalle">{{ c.especialidad }} · {{ c.fecha }} · {{ c.hora }}</p>
-              </div>
-              <span :class="['badge-estado', `estado-${c.estado}`]">{{ c.estado }}</span>
-              <button
-                class="boton-cancelar"
-                @click="cancelarCita(c.id)"
-                v-if="c.estado !== 'cancelada'"
-                :disabled="cargando"
-                title="Cancelar cita"
-              >
-                <i class="pi pi-trash"></i>
+              <button class="btn-limpiar-filtro" @click="filtroEstado = ''">
+                Limpiar filtro <i class="pi pi-times"></i>
               </button>
             </div>
-          </TransitionGroup>
+          </Transition>
+
+          <div v-if="cargandoCitasDoctor" class="sin-citas">
+            <i class="pi pi-spin pi-spinner" style="font-size: 2rem; color: #388bfd;"></i>
+            <p>Cargando solicitudes de citas...</p>
+          </div>
+
+          <div v-else-if="citasDoctor.length === 0" class="sin-citas">
+            <div class="sin-citas-icono"><i class="pi pi-calendar-times"></i></div>
+            <p class="sin-citas-titulo">Sin solicitudes de citas</p>
+            <p class="sin-citas-sub">Cuando los pacientes soliciten citas médicas con tu perfil, aparecerán en esta sección.</p>
+          </div>
+
+          <div v-else-if="citasDoctorFiltradas.length === 0" class="sin-citas">
+            <div class="sin-citas-icono"><i class="pi pi-filter-slash"></i></div>
+            <p class="sin-citas-titulo">Sin citas encontradas</p>
+            <p class="sin-citas-sub">No tienes citas con el estado seleccionado: <strong>{{ filtroEstado }}</strong></p>
+          </div>
+
+          <div v-else class="tabla-wrapper">
+            <table class="tabla-admin">
+              <thead>
+                <tr>
+                  <th>Paciente</th>
+                  <th>Correo Electrónico</th>
+                  <th>Especialidad</th>
+                  <th>Fecha y Hora</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="c in citasDoctorFiltradas" :key="c.id">
+                  <td><strong class="texto-blanco">{{ c.paciente_nombre }}</strong></td>
+                  <td>{{ c.paciente_email }}</td>
+                  <td><span class="badge-especialidad">{{ c.especialidad }}</span></td>
+                  <td>{{ c.fecha }} a las {{ c.hora }}</td>
+                  <td>
+                    <span :class="['badge-estado', `estado-${c.estado}`]">{{ c.estado }}</span>
+                  </td>
+                  <td>
+                    <div class="acciones-fila" v-if="c.estado === 'pendiente'">
+                      <button 
+                        class="btn-accion btn-confirmar" 
+                        @click="cambiarEstadoCitaDoctor(c.id, 'confirmada')"
+                        title="Aceptar Cita"
+                      >
+                        <i class="pi pi-check"></i> Aceptar
+                      </button>
+                      <button 
+                        class="btn-accion btn-eliminar" 
+                        @click="cambiarEstadoCitaDoctor(c.id, 'cancelada')"
+                        title="Rechazar Cita"
+                      >
+                        <i class="pi pi-times"></i> Rechazar
+                      </button>
+                    </div>
+                    <div v-else style="color: #484f58; font-size: 0.8rem; font-style: italic; padding-left: 0.5rem;">
+                      Finalizada
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
+
+      </div>
+
+      <!-- VISTA DEL PACIENTE -->
+      <div v-else class="paciente-dashboard-cuerpo" style="display: flex; flex-direction: column; gap: 1.5rem; width: 100%;">
+
+        <!-- STATS RÁPIDAS -->
+        <div class="grid-stats">
+          <div
+            class="stat-card"
+            v-for="s in statsUsuario"
+            :key="s.label"
+            :class="{ 'stat-activa': filtroEstado === s.filtro }"
+            @click="filtroEstado = s.filtro"
+          >
+            <div class="stat-icono" :style="{ background: s.bg, borderColor: s.borde }">
+              <i :class="['pi', s.icono]" :style="{ color: s.color }"></i>
+            </div>
+            <div>
+              <p class="stat-num">{{ s.valor }}</p>
+              <p class="stat-label">{{ s.label }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- DOCTORES DISPONIBLES -->
+        <div class="seccion-card">
+          <div class="card-cabeza">
+            <i class="pi pi-users cabeza-icono"></i>
+            <div>
+              <h2 class="card-titulo">Nuestros médicos</h2>
+              <p class="card-sub">Selecciona un doctor para agendar tu cita</p>
+            </div>
+          </div>
+
+          <div v-if="cargandoDoctores" class="doctores-grid">
+            <div class="skeleton-doctor" v-for="n in 4" :key="n">
+              <Skeleton height="120px" borderRadius="12px" />
+            </div>
+          </div>
+
+          <div v-else class="doctores-grid">
+            <div
+              v-for="doc in doctores"
+              :key="doc.id"
+              class="doctor-card"
+              :class="{ seleccionado: doctorSeleccionado?.id === doc.id }"
+              @click="seleccionarDoctor(doc)"
+            >
+              <div class="doctor-avatar" :style="{ background: colorAvatar(doc.especialidad) }">
+                {{ doc.foto_iniciales }}
+              </div>
+              <div class="doctor-info">
+                <p class="doctor-nombre">{{ doc.nombre }}</p>
+                <p class="doctor-especialidad">{{ doc.especialidad }}</p>
+                <p class="doctor-contacto"><i class="pi pi-phone"></i> {{ doc.telefono }}</p>
+              </div>
+              <div class="doctor-check" v-if="doctorSeleccionado?.id === doc.id">
+                <i class="pi pi-check-circle"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AGENDAR CITA -->
+        <Transition name="deslizar">
+          <div class="seccion-card" v-if="doctorSeleccionado">
+            <div class="card-cabeza">
+              <i class="pi pi-calendar-plus cabeza-icono"></i>
+              <div>
+                <h2 class="card-titulo">Agendar con {{ doctorSeleccionado.nombre }}</h2>
+                <p class="card-sub">{{ doctorSeleccionado.especialidad }}</p>
+              </div>
+            </div>
+
+            <div class="form-grid">
+              <div class="campo">
+                <label>Fecha</label>
+                <input
+                  type="date"
+                  v-model="nuevaCita.fecha"
+                  class="inp-fecha"
+                  :disabled="cargando"
+                  :min="hoy"
+                  @change="cargarHorarios"
+                />
+              </div>
+
+              <div class="campo">
+                <label>Hora disponible</label>
+                <div v-if="!nuevaCita.fecha" class="hint-fecha">
+                  <i class="pi pi-info-circle"></i> Selecciona primero una fecha
+                </div>
+                <div v-else-if="cargandoHorarios" class="hint-fecha">
+                  <i class="pi pi-spin pi-spinner"></i> Cargando horarios...
+                </div>
+                <div v-else class="horarios-grid">
+                  <button
+                    v-for="h in horariosDisponibles"
+                    :key="h"
+                    class="btn-hora disponible"
+                    :class="{ activo: nuevaCita.hora === h }"
+                    @click="nuevaCita.hora = h"
+                  >{{ h }}</button>
+                  <button
+                    v-for="h in horariosOcupados"
+                    :key="h"
+                    class="btn-hora ocupado"
+                    disabled
+                  >{{ h }}</button>
+                </div>
+              </div>
+            </div>
+
+            <button class="boton-agendar" @click="agendarCita" :disabled="cargando || !nuevaCita.fecha || !nuevaCita.hora">
+              <span v-if="!cargando" class="boton-contenido">
+                Confirmar cita <i class="pi pi-check icono-boton"></i>
+              </span>
+              <span v-else class="boton-contenido">
+                <i class="pi pi-spin pi-spinner"></i> Agendando...
+              </span>
+              <span class="boton-brillo"></span>
+            </button>
+          </div>
+        </Transition>
+
+        <!-- MIS CITAS -->
+        <div class="seccion-card">
+          <div class="card-cabeza">
+            <i class="pi pi-list cabeza-icono"></i>
+            <div>
+              <h2 class="card-titulo">Mis citas</h2>
+              <p class="card-sub">Historial y estado de tus citas médicas</p>
+            </div>
+          </div>
+
+          <!-- BANNER FILTRO ACTIVO -->
+          <Transition name="deslizar">
+            <div class="banner-filtro" v-if="filtroEstado">
+              <div class="filtro-info">
+                <i class="pi pi-filter"></i>
+                <span>Mostrando citas en estado: <strong class="filtro-valor">{{ filtroEstado }}</strong></span>
+              </div>
+              <button class="btn-limpiar-filtro" @click="filtroEstado = ''">
+                Limpiar filtro <i class="pi pi-times"></i>
+              </button>
+            </div>
+          </Transition>
+
+          <div v-if="cargandoCitas" class="lista-skeleton">
+            <Skeleton height="3.5rem" borderRadius="10px" v-for="n in 3" :key="n" />
+          </div>
+
+          <div v-else-if="citas.length === 0" class="sin-citas">
+            <div class="sin-citas-icono"><i class="pi pi-calendar"></i></div>
+            <p class="sin-citas-titulo">Sin citas agendadas</p>
+            <p class="sin-citas-sub">Selecciona un médico arriba para agendar tu primera cita</p>
+          </div>
+
+          <div v-else-if="citasFiltradas.length === 0" class="sin-citas">
+            <div class="sin-citas-icono"><i class="pi pi-filter-slash"></i></div>
+            <p class="sin-citas-titulo">Sin citas encontradas</p>
+            <p class="sin-citas-sub">No tienes citas con el estado seleccionado: <strong>{{ filtroEstado }}</strong></p>
+          </div>
+
+          <div v-else class="citas-lista">
+            <TransitionGroup name="lista">
+              <div class="cita-fila" v-for="c in citasFiltradas" :key="c.id">
+                <div class="cita-avatar" :style="{ background: colorAvatar(c.especialidad) }">
+                  {{ c.doctor_iniciales }}
+                </div>
+                <div class="cita-info">
+                  <p class="cita-doctor">{{ c.doctor_nombre }}</p>
+                  <p class="cita-detalle">{{ c.especialidad }} · {{ c.fecha }} · {{ c.hora }}</p>
+                </div>
+                <span :class="['badge-estado', `estado-${c.estado}`]">{{ c.estado }}</span>
+                <button
+                  class="boton-cancelar"
+                  @click="cancelarCita(c.id)"
+                  v-if="c.estado !== 'cancelada'"
+                  :disabled="cargando"
+                  title="Cancelar cita"
+                >
+                  <i class="pi pi-trash"></i>
+                </button>
+              </div>
+            </TransitionGroup>
+          </div>
+        </div>
+
       </div>
 
     </div>
+
+    <!-- SIDEBAR DRAWER -->
+    <Transition name="sidebar-fade">
+      <div class="sidebar-overlay" v-if="mostrarSidebar" @click.self="mostrarSidebar = false">
+        <div class="sidebar-caja">
+          <div class="sidebar-header">
+            <div class="sidebar-perfil">
+              <div class="sidebar-avatar">{{ usuario.nombre?.charAt(0).toUpperCase() }}</div>
+              <div>
+                <p class="sidebar-nombre">{{ usuario.nombre }}</p>
+                <p class="sidebar-rol">{{ usuario.rol === 'doctor' ? 'Médico' : usuario.rol === 'admin' ? 'Administrador' : 'Paciente' }}</p>
+              </div>
+            </div>
+            <button class="sidebar-cerrar" @click="mostrarSidebar = false">
+              <i class="pi pi-times"></i>
+            </button>
+          </div>
+
+          <div class="sidebar-menu">
+            <button class="menu-item" @click="abrirPerfil">
+              <i class="pi pi-user"></i> Ver Perfil
+            </button>
+            <button class="menu-item" @click="abrirCambiarPassword">
+              <i class="pi pi-lock"></i> Cambiar Contraseña
+            </button>
+            <button class="menu-item" @click="abrirAcercaDe">
+              <i class="pi pi-info-circle"></i> Acerca de Nosotros
+            </button>
+            <hr class="menu-divisor" />
+            <button class="menu-item menu-item-salir" @click="cerrarSesion">
+              <i class="pi pi-sign-out"></i> Cerrar Sesión
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- VER PERFIL MODAL -->
+    <Transition name="modal-fade">
+      <div class="modal-overlay" v-if="mostrarModalPerfil" @click.self="mostrarModalPerfil = false">
+        <div class="modal-caja">
+          <div class="modal-cabeza">
+            <div class="modal-icono"><i class="pi pi-user"></i></div>
+            <div style="flex:1">
+              <p class="modal-titulo">Mi Perfil</p>
+              <p class="modal-sub">Información de tu cuenta</p>
+            </div>
+            <button class="modal-cerrar" @click="mostrarModalPerfil = false"><i class="pi pi-times"></i></button>
+          </div>
+          <div class="perfil-datos">
+            <div class="dato-grupo">
+              <label>Nombre Completo</label>
+              <p>{{ usuario.nombre }}</p>
+            </div>
+            <div class="dato-grupo">
+              <label>Correo Electrónico</label>
+              <p>{{ usuario.email }}</p>
+            </div>
+            <div class="dato-grupo">
+              <label>Fecha de Nacimiento</label>
+              <p>{{ usuario.fecha_nacimiento || 'No registrada' }}</p>
+            </div>
+            <div class="dato-grupo">
+              <label>Rol de Cuenta</label>
+              <p><span class="badge-rol">{{ usuario.rol }}</span></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- CAMBIAR CONTRASEÑA MODAL -->
+    <Transition name="modal-fade">
+      <div class="modal-overlay" v-if="mostrarModalPassword" @click.self="mostrarModalPassword = false">
+        <div class="modal-caja">
+          <div class="modal-cabeza">
+            <div class="modal-icono"><i class="pi pi-lock"></i></div>
+            <div style="flex:1">
+              <p class="modal-titulo">Cambiar Contraseña</p>
+              <p class="modal-sub">Escribe tu nueva contraseña</p>
+            </div>
+            <button class="modal-cerrar" @click="mostrarModalPassword = false"><i class="pi pi-times"></i></button>
+          </div>
+          <div class="campo">
+            <label>Nueva Contraseña</label>
+            <InputText v-model="nuevaContrasena" type="password" placeholder="Mínimo 6 caracteres" class="inp" :disabled="cargandoPassword" style="width: 100%;" />
+          </div>
+          <div class="campo" style="margin-top: 1rem;">
+            <label>Confirmar Nueva Contraseña</label>
+            <InputText v-model="confirmarContrasena" type="password" placeholder="Repite la contraseña" class="inp" :disabled="cargandoPassword" style="width: 100%;" />
+          </div>
+          <div class="modal-acciones" style="margin-top: 1.5rem;">
+            <button class="btn-modal-cancelar" @click="mostrarModalPassword = false">Cancelar</button>
+            <button class="btn-modal-ok" @click="actualizarPassword" :disabled="cargandoPassword">
+              <span v-if="!cargandoPassword"><i class="pi pi-check"></i> Guardar</span>
+              <span v-else><i class="pi pi-spin pi-spinner"></i> Guardando...</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- ACERCA DE NOSOTROS MODAL -->
+    <Transition name="modal-fade">
+      <div class="modal-overlay" v-if="mostrarModalAcerca" @click.self="mostrarModalAcerca = false">
+        <div class="modal-caja">
+          <div class="modal-cabeza">
+            <div class="modal-icono" style="width:60px;height:60px;">
+              <svg viewBox="0 0 80 80" width="56" height="56" xmlns="http://www.w3.org/2000/svg">
+                <polygon points="40,2 76,21 76,59 40,78 4,59 4,21" fill="none" stroke="#1a2744" stroke-width="1"/>
+                <rect x="29" y="14" width="22" height="52" rx="7" fill="#1a3a6e"/>
+                <rect x="14" y="29" width="48" height="22" rx="7" fill="#1a3a6e"/>
+                <rect x="31" y="16" width="18" height="48" rx="6" fill="#388bfd"/>
+                <rect x="16" y="31" width="48" height="18" rx="6" fill="#388bfd"/>
+                <rect x="31" y="31" width="18" height="18" rx="4" fill="#60a5fa"/>
+                <circle cx="40" cy="40" r="5" fill="none" stroke="#93c5fd" stroke-width="1.2" opacity="0.6"/>
+                <circle cx="40" cy="40" r="2" fill="#bfdbfe"/>
+                <polyline class="pulso-linea" points="4,40 14,40 20,26 28,54 32,40"
+                  fill="none" stroke="#388bfd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline class="pulso-linea pulso-delay" points="48,40 52,26 60,54 66,40 76,40"
+                  fill="none" stroke="#388bfd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div style="flex:1">
+              <p class="modal-titulo">Acerca de Nosotros</p>
+              <p class="modal-sub">Usuario: {{ usuario.nombre }}</p>
+            </div>
+            <button class="modal-cerrar" @click="mostrarModalAcerca = false"><i class="pi pi-times"></i></button>
+          </div>
+          <div class="acerca-cuerpo">
+            <p><strong>FastCitas</strong> es la plataforma líder en agendamiento digital de citas médicas para centros de salud pública de Colombia, diseñada para erradicar las largas filas desde las 4:00 AM.</p>
+            <p>Nuestra misión es hacer la salud pública accesible, digna y moderna para todos.</p>
+            <hr class="divisor-acerca" />
+            <p class="contacto-titulo"><strong>Contacto de Soporte</strong></p>
+            <p class="contacto-item"><i class="pi pi-envelope"></i> soporte@fastcitas.com</p>
+            <p class="contacto-item"><i class="pi pi-phone"></i> +57 3126245955</p>
+            <p class="contacto-item"><i class="pi pi-map-marker"></i> Santa Marta, Colombia</p>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <Toast />
   </div>
 </template>
@@ -260,6 +548,69 @@ const nuevaCita = ref({ fecha: '', hora: '' })
 const horaActual = ref('')
 const fechaActual = ref('')
 let intervaloReloj = null
+const filtroEstado = ref('')
+
+const mostrarSidebar = ref(false)
+const mostrarModalPerfil = ref(false)
+const mostrarModalPassword = ref(false)
+const mostrarModalAcerca = ref(false)
+
+const nuevaContrasena = ref('')
+const confirmarContrasena = ref('')
+const cargandoPassword = ref(false)
+
+// Doctor variables
+const citasDoctor = ref([])
+const cargandoCitasDoctor = ref(false)
+
+const abrirPerfil = () => {
+  mostrarSidebar.value = false
+  mostrarModalPerfil.value = true
+}
+
+const abrirCambiarPassword = () => {
+  mostrarSidebar.value = false
+  mostrarModalPassword.value = true
+}
+
+const abrirAcercaDe = () => {
+  mostrarSidebar.value = false
+  mostrarModalAcerca.value = true
+}
+
+const actualizarPassword = async () => {
+  if (!nuevaContrasena.value || nuevaContrasena.value.length < 6) {
+    notificacion.add({ severity: 'warn', summary: 'Atención', detail: 'La contraseña debe tener al menos 6 caracteres', life: 3000 })
+    return
+  }
+  if (nuevaContrasena.value !== confirmarContrasena.value) {
+    notificacion.add({ severity: 'error', summary: 'Error', detail: 'Las contraseñas no coinciden', life: 3000 })
+    return
+  }
+  cargandoPassword.value = true
+  try {
+    await axios.put('/auth/cambiar-password', { email: usuario.value.email, nueva_password: nuevaContrasena.value })
+    notificacion.add({ severity: 'success', summary: '¡Éxito!', detail: 'Contraseña actualizada correctamente', life: 2000 })
+    nuevaContrasena.value = ''
+    confirmarContrasena.value = ''
+    mostrarModalPassword.value = false
+  } catch (error) {
+    notificacion.add({ severity: 'error', summary: 'Error', detail: error.response?.data?.detail || 'No se pudo cambiar la contraseña', life: 3000 })
+  } finally {
+    cargandoPassword.value = false
+  }
+}
+
+const nombreAMostrar = computed(() => {
+  const nombreComp = usuario.value.nombre || ''
+  if (nombreComp.toLowerCase().startsWith('dr. ') || nombreComp.toLowerCase().startsWith('dra. ')) {
+    const partes = nombreComp.split(' ')
+    if (partes.length > 1) {
+      return `${partes[0]} ${partes[1]}`
+    }
+  }
+  return nombreComp.split(' ')[0]
+})
 
 const saludo = computed(() => {
   const h = new Date().getHours()
@@ -316,11 +667,28 @@ const coloresEspecialidad = {
 const colorAvatar = (especialidad) => coloresEspecialidad[especialidad] || '#1a3a6e'
 
 const statsUsuario = computed(() => [
-  { label: 'Total citas', valor: citas.value.length, icono: 'pi-calendar', color: '#388bfd', bg: 'rgba(56,139,253,0.08)', borde: 'rgba(56,139,253,0.2)' },
-  { label: 'Pendientes', valor: citas.value.filter(c => c.estado === 'pendiente').length, icono: 'pi-clock', color: '#fbbf24', bg: 'rgba(251,191,36,0.08)', borde: 'rgba(251,191,36,0.2)' },
-  { label: 'Confirmadas', valor: citas.value.filter(c => c.estado === 'confirmada').length, icono: 'pi-check-circle', color: '#3fb950', bg: 'rgba(63,185,80,0.08)', borde: 'rgba(63,185,80,0.2)' },
-  { label: 'Canceladas', valor: citas.value.filter(c => c.estado === 'cancelada').length, icono: 'pi-times-circle', color: '#f85149', bg: 'rgba(248,81,73,0.08)', borde: 'rgba(248,81,73,0.2)' },
+  { label: 'Total citas', valor: citas.value.length, icono: 'pi-calendar', color: '#388bfd', bg: 'rgba(56,139,253,0.08)', borde: 'rgba(56,139,253,0.2)', filtro: '' },
+  { label: 'Pendientes', valor: citas.value.filter(c => c.estado === 'pendiente').length, icono: 'pi-clock', color: '#fbbf24', bg: 'rgba(251,191,36,0.08)', borde: 'rgba(251,191,36,0.2)', filtro: 'pendiente' },
+  { label: 'Confirmadas', valor: citas.value.filter(c => c.estado === 'confirmada').length, icono: 'pi-check-circle', color: '#3fb950', bg: 'rgba(63,185,80,0.08)', borde: 'rgba(63,185,80,0.2)', filtro: 'confirmada' },
+  { label: 'Canceladas', valor: citas.value.filter(c => c.estado === 'cancelada').length, icono: 'pi-times-circle', color: '#f85149', bg: 'rgba(248,81,73,0.08)', borde: 'rgba(248,81,73,0.2)', filtro: 'cancelada' },
 ])
+
+const citasFiltradas = computed(() => {
+  if (!filtroEstado.value) return citas.value
+  return citas.value.filter(c => c.estado === filtroEstado.value)
+})
+
+const statsDoctor = computed(() => [
+  { label: 'Total citas', valor: citasDoctor.value.length, icono: 'pi-calendar', color: '#388bfd', bg: 'rgba(56,139,253,0.08)', borde: 'rgba(56,139,253,0.2)', filtro: '' },
+  { label: 'Pendientes', valor: citasDoctor.value.filter(c => c.estado === 'pendiente').length, icono: 'pi-clock', color: '#fbbf24', bg: 'rgba(251,191,36,0.08)', borde: 'rgba(251,191,36,0.2)', filtro: 'pendiente' },
+  { label: 'Confirmadas', valor: citasDoctor.value.filter(c => c.estado === 'confirmada').length, icono: 'pi-check-circle', color: '#3fb950', bg: 'rgba(63,185,80,0.08)', borde: 'rgba(63,185,80,0.2)', filtro: 'confirmada' },
+  { label: 'Canceladas', valor: citasDoctor.value.filter(c => c.estado === 'cancelada').length, icono: 'pi-times-circle', color: '#f85149', bg: 'rgba(248,81,73,0.08)', borde: 'rgba(248,81,73,0.2)', filtro: 'cancelada' },
+])
+
+const citasDoctorFiltradas = computed(() => {
+  if (!filtroEstado.value) return citasDoctor.value
+  return citasDoctor.value.filter(c => c.estado === filtroEstado.value)
+})
 
 const obtenerDoctores = async () => {
   cargandoDoctores.value = true
@@ -375,6 +743,37 @@ const obtenerCitas = async () => {
   }
 }
 
+const obtenerCitasDoctor = async () => {
+  if (!usuario.value.doctor_id) return
+  cargandoCitasDoctor.value = true
+  try {
+    const res = await axios.get(`/citas/doctor/${usuario.value.doctor_id}`)
+    citasDoctor.value = res.data
+  } catch {
+    notificacion.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar tus citas', life: 3000 })
+  } finally {
+    cargandoCitasDoctor.value = false
+  }
+}
+
+const cambiarEstadoCitaDoctor = async (idCita, nuevoEstado) => {
+  cargando.value = true
+  try {
+    await axios.put(`/citas/${idCita}/estado`, null, { params: { estado: nuevoEstado } })
+    notificacion.add({
+      severity: 'success',
+      summary: nuevoEstado === 'confirmada' ? 'Cita confirmada' : 'Cita cancelada',
+      detail: `La cita fue marcada como ${nuevoEstado}`,
+      life: 3000
+    })
+    await obtenerCitasDoctor()
+  } catch {
+    notificacion.add({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar el estado de la cita', life: 3000 })
+  } finally {
+    cargando.value = false
+  }
+}
+
 const agendarCita = async () => {
   if (!nuevaCita.value.fecha || !nuevaCita.value.hora) return
   cargando.value = true
@@ -417,8 +816,12 @@ const cerrarSesion = () => {
 }
 
 onMounted(() => {
-  obtenerDoctores()
-  obtenerCitas()
+  if (usuario.value.rol === 'doctor') {
+    obtenerCitasDoctor()
+  } else {
+    obtenerDoctores()
+    obtenerCitas()
+  }
   actualizarReloj()
   intervaloReloj = setInterval(actualizarReloj, 1000)
 })
@@ -429,9 +832,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-* { font-family: 'Inter', sans-serif; box-sizing: border-box; margin: 0; padding: 0; }
-
 .pagina-inicio { min-height: 100vh; background: #080c14; color: #e6edf3; }
 
 /* NAVBAR */
@@ -520,12 +920,65 @@ onUnmounted(() => {
 .stat-card {
   background: #0d1117; border: 1px solid #21262d; border-radius: 14px;
   padding: 1.1rem; display: flex; align-items: center; gap: 0.9rem;
-  transition: border-color 0.2s, transform 0.2s;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  user-select: none;
 }
-.stat-card:hover { border-color: #30363d; transform: translateY(-2px); }
+.stat-card:hover { border-color: #388bfd; transform: translateY(-2px); }
+.stat-card.stat-activa {
+  background: rgba(56, 139, 253, 0.04);
+  border-color: #388bfd;
+  box-shadow: 0 0 12px rgba(56, 139, 253, 0.15);
+}
 .stat-icono { width: 40px; height: 40px; border: 1px solid; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
 .stat-num { font-size: 1.5rem; font-weight: 700; color: #e6edf3; line-height: 1; margin-bottom: 0.15rem; }
 .stat-label { font-size: 0.72rem; color: #484f58; }
+
+/* BANNER FILTRO ACTIVO */
+.banner-filtro {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(56, 139, 253, 0.06);
+  border: 1px solid rgba(56, 139, 253, 0.18);
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  margin-bottom: 1.2rem;
+  font-size: 0.82rem;
+}
+.filtro-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #8b949e;
+}
+.filtro-info i {
+  color: #388bfd;
+}
+.filtro-valor {
+  color: #388bfd;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.btn-limpiar-filtro {
+  background: transparent;
+  border: 1px solid rgba(56, 139, 253, 0.3);
+  color: #388bfd;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: all 0.2s;
+}
+.btn-limpiar-filtro:hover {
+  background: #388bfd;
+  color: #e6edf3;
+  border-color: #388bfd;
+}
 
 /* CARDS */
 .seccion-card { background: #0d1117; border: 1px solid #21262d; border-radius: 16px; padding: 1.8rem; }
@@ -602,6 +1055,308 @@ onUnmounted(() => {
 .sin-citas-sub { font-size: 0.78rem; color: #30363d; }
 .lista-skeleton { display: flex; flex-direction: column; gap: 0.7rem; }
 
+/* HAMBURGER & SIDEBAR STYLE */
+.btn-hamburguesa {
+  background: transparent;
+  border: none;
+  color: #8b949e;
+  font-size: 1.4rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.btn-hamburguesa:hover {
+  color: #388bfd;
+  background: rgba(56, 139, 253, 0.08);
+}
+
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 12, 20, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 150;
+  display: flex;
+  justify-content: flex-end;
+}
+.sidebar-caja {
+  width: 280px;
+  background: #0d1117;
+  border-left: 1px solid #21262d;
+  height: 100%;
+  padding: 2rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.5);
+}
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.sidebar-perfil {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  text-align: left;
+}
+.sidebar-avatar {
+  width: 48px;
+  height: 48px;
+  background: #1a3a6e;
+  border: 2px solid #2d5fa8;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #60a5fa;
+}
+.sidebar-nombre {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #e6edf3;
+  line-height: 1.2;
+}
+.sidebar-rol {
+  font-size: 0.72rem;
+  color: #388bfd;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-top: 0.15rem;
+}
+.sidebar-cerrar {
+  background: transparent;
+  border: none;
+  color: #484f58;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.3rem;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+.sidebar-cerrar:hover {
+  color: #e6edf3;
+}
+
+.sidebar-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  color: #8b949e;
+  font-size: 0.88rem;
+  font-weight: 500;
+  font-family: 'Inter', sans-serif;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+}
+.menu-item:hover {
+  background: rgba(56, 139, 253, 0.08);
+  color: #388bfd;
+}
+.menu-divisor {
+  border: 0;
+  height: 1px;
+  background: #21262d;
+  margin: 0.5rem 0;
+}
+.menu-item-salir:hover {
+  background: rgba(248, 81, 73, 0.08);
+  color: #f85149;
+}
+
+/* MODALES */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(8, 12, 20, 0.88);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+.modal-caja {
+  width: 100%;
+  max-width: 400px;
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 18px;
+  padding: 2rem;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+  text-align: left;
+}
+.modal-cabeza {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.modal-icono {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  background: rgba(56,139,253,0.1);
+  border: 1px solid rgba(56,139,253,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  color: #388bfd;
+}
+.modal-titulo {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #e6edf3;
+  margin-bottom: 0.2rem;
+}
+.modal-sub {
+  font-size: 0.75rem;
+  color: #484f58;
+}
+.modal-cerrar {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: #484f58;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.3rem;
+  border-radius: 6px;
+}
+.modal-cerrar:hover {
+  color: #e6edf3;
+}
+
+.perfil-datos, .acerca-cuerpo {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  margin-top: 1rem;
+}
+.dato-grupo label {
+  display: block;
+  font-size: 0.72rem;
+  color: #484f58;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.dato-grupo p {
+  font-size: 0.88rem;
+  color: #e6edf3;
+  font-weight: 500;
+}
+.badge-rol {
+  display: inline-block;
+  background: rgba(56, 139, 253, 0.15);
+  border: 1px solid rgba(56, 139, 253, 0.3);
+  color: #388bfd;
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.divisor-acerca {
+  border: 0;
+  height: 1px;
+  background: #21262d;
+  margin: 0.3rem 0;
+}
+.contacto-titulo {
+  font-size: 0.82rem;
+  color: #e6edf3;
+}
+.contacto-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+  color: #8b949e;
+}
+.contacto-item i {
+  color: #388bfd;
+}
+
+/* ACCIONES DE MODAL */
+.modal-acciones {
+  display: flex;
+  gap: 0.7rem;
+  margin-top: 1.3rem;
+}
+.btn-modal-cancelar {
+  flex: 1;
+  padding: 0.55rem;
+  background: transparent;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  color: #8b949e;
+  font-size: 0.82rem;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+}
+.btn-modal-ok {
+  flex: 1;
+  padding: 0.55rem;
+  background: #1a3a6e;
+  border: 1px solid #2d5fa8;
+  border-radius: 8px;
+  color: #e6edf3;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+.btn-modal-ok:hover:not(:disabled) {
+  background: #1d4ed8;
+  border-color: #388bfd;
+}
+.btn-modal-ok:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* TRANSICIONES SIDEBAR */
+.sidebar-fade-enter-active, .sidebar-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+.sidebar-fade-enter-from, .sidebar-fade-leave-to {
+  opacity: 0;
+}
+.sidebar-fade-enter-active .sidebar-caja, .sidebar-fade-leave-active .sidebar-caja {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.sidebar-fade-enter-from .sidebar-caja {
+  transform: translateX(100%);
+}
+.sidebar-fade-leave-to .sidebar-caja {
+  transform: translateX(100%);
+}
+
 /* TRANSICIONES */
 .deslizar-enter-active { transition: opacity 0.4s ease, transform 0.4s ease; }
 .deslizar-enter-from { opacity: 0; transform: translateY(-16px); }
@@ -609,6 +1364,89 @@ onUnmounted(() => {
 .lista-enter-from { opacity: 0; transform: translateX(-12px); }
 .lista-leave-active { transition: opacity 0.2s; }
 .lista-leave-to { opacity: 0; }
+
+/* TABLA DE CITAS - VISTA DOCTOR */
+.tabla-wrapper {
+  overflow-x: auto;
+  margin-top: 1rem;
+  border-radius: 12px;
+  background: #0d1117;
+  border: 1px solid #21262d;
+}
+.tabla-admin {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.85rem;
+}
+.tabla-admin th {
+  padding: 1rem 1.2rem;
+  color: #8b949e;
+  font-weight: 600;
+  border-bottom: 1px solid #21262d;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.tabla-admin td {
+  padding: 1.1rem 1.2rem;
+  border-bottom: 1px solid #161b22;
+  color: #c9d1d9;
+  vertical-align: middle;
+}
+.texto-blanco {
+  color: #f0f6fc;
+}
+.badge-especialidad {
+  background: rgba(110, 118, 129, 0.1);
+  border: 1px solid rgba(110, 118, 129, 0.2);
+  color: #8b949e;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.72rem;
+}
+
+/* ACCIONES DE TABLA */
+.acciones-fila {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+.btn-accion {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: transparent;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  color: #8b949e;
+  padding: 0.45rem 0.8rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  font-family: 'Inter', sans-serif;
+  user-select: none;
+}
+.btn-confirmar {
+  background: rgba(63, 185, 80, 0.1) !important;
+  border-color: rgba(63, 185, 80, 0.3) !important;
+  color: #3fb950 !important;
+}
+.btn-confirmar:hover {
+  background: #3fb950 !important;
+  border-color: #3fb950 !important;
+  color: #ffffff !important;
+}
+.btn-eliminar {
+  background: rgba(248, 81, 73, 0.1) !important;
+  border-color: rgba(248, 81, 73, 0.3) !important;
+  color: #f85149 !important;
+}
+.btn-eliminar:hover {
+  background: #f85149 !important;
+  border-color: #f85149 !important;
+  color: #ffffff !important;
+}
 
 @media (max-width: 640px) {
   .grid-stats { grid-template-columns: repeat(2, 1fr); }
